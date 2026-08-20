@@ -11,7 +11,7 @@ public interface DocumentService {
 
 
     // Upload document
-    DocumentResponseDTO uploadDocument(MultipartFile file);
+    DocumentResponseDTO uploadDocument(MultipartFile file, DocumentRequest metadata);
 
 
 
@@ -48,5 +48,16 @@ public interface DocumentService {
 
     // Search documents
     List<DocumentResponseDTO> searchDocuments(String keyword);
+    List<DocumentResponseDTO> advancedSearch(String type, String category, String department, String name,
+                                              String owner, String confidentiality, String status,
+                                              String fiscalYear, String referenceNumber, String tags, String uploadDate);
+    DocumentResponseDTO searchByCode(String code);
+    List<DocumentResponseDTO> trash();
+    DocumentResponseDTO restore(Long id);
+    void purge(Long id);
+    DocumentResponseDTO move(Long id, Long folderId);
+    List<com.doms.doms.dto.VersionResponse> versionList(Long id);
+    DocumentResponseDTO addVersion(Long id, MultipartFile file, String note);
+    DocumentResponseDTO rollback(Long id, Integer version);
 
 }

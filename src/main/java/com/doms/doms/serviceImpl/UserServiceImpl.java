@@ -43,7 +43,8 @@ public class UserServiceImpl implements UserService {
     public UserResponse createUser(CreateUserRequest request) {
 
 
-        if(userRepository.existsByEmail(request.getEmail())){
+        String email = request.getEmail().trim().toLowerCase();
+        if(userRepository.existsByEmail(email)){
 
             throw new RuntimeException("Email already exists");
 
@@ -54,7 +55,7 @@ public class UserServiceImpl implements UserService {
 
                 .fullName(request.getFullName())
 
-                .email(request.getEmail())
+                .email(email)
 
                 .password(
                         passwordEncoder.encode(request.getPassword())
@@ -63,6 +64,10 @@ public class UserServiceImpl implements UserService {
                 .role(request.getRole())
 
                 .enabled(true)
+                .contactNumber(request.getContactNumber())
+                .jobTitle(request.getJobTitle().trim())
+                .department(request.getDepartment().trim())
+                .address(request.getAddress() == null ? "" : request.getAddress().trim())
 
                 .build();
 
@@ -132,9 +137,10 @@ public class UserServiceImpl implements UserService {
         );
 
 
-        user.setEmail(
-                request.getEmail()
-        );
+        String email = request.getEmail().trim().toLowerCase();
+        userRepository.findByEmail(email).filter(found -> !found.getId().equals(id))
+                .ifPresent(found -> { throw new IllegalArgumentException("Email already exists"); });
+        user.setEmail(email);
 
 
         user.setRole(
@@ -145,6 +151,19 @@ public class UserServiceImpl implements UserService {
         user.setEnabled(
                 request.isEnabled()
         );
+        user.setContactNumber(request.getContactNumber());
+        user.setJobTitle(request.getJobTitle());
+        user.setDepartment(request.getDepartment());
+        user.setAddress(request.getAddress());
+        if (request.getCurrentPlan() != null && !request.getCurrentPlan().isBlank()) {
+            user.setCurrentPlan(request.getCurrentPlan().trim().toUpperCase());
+        }
+        if (request.getDocumentLimit() != null) {
+            if (request.getDocumentLimit() < user.getDocumentsUsed()) {
+                throw new IllegalArgumentException("Document limit cannot be lower than documents already used");
+            }
+            user.setDocumentLimit(request.getDocumentLimit());
+        }
 
 
 
@@ -278,6 +297,13 @@ public class UserServiceImpl implements UserService {
                 .role(user.getRole().name())
 
                 .enabled(user.isEnabled())
+                .documentLimit(user.getDocumentLimit())
+                .documentsUsed(user.getDocumentsUsed())
+                .currentPlan(user.getCurrentPlan())
+                .contactNumber(user.getContactNumber())
+                .jobTitle(user.getJobTitle())
+                .department(user.getDepartment())
+                .address(user.getAddress())
 
                 .build();
 

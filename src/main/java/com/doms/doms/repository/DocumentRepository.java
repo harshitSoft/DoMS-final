@@ -2,6 +2,7 @@ package com.doms.doms.repository;
 
 import com.doms.doms.entity.Document;
 import com.doms.doms.entity.User;
+import com.doms.doms.entity.Folder;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -23,5 +24,12 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
             User user,
             String keyword
     );
+    Optional<Document> findByUploadedByAndDocumentCodeIgnoreCase(User user, String documentCode);
+    Optional<Document> findByDocumentCodeIgnoreCase(String documentCode);
+    long countByUploadedBy(User user);
+    Optional<Document> findFirstByUploadedByAndContentHashAndDeletedAtIsNull(User user, String contentHash);
+    List<Document> findByUploadedByAndDeletedAtIsNotNullOrderByDeletedAtDesc(User user);
+    List<Document> findByUploadedByAndFolderAndDeletedAtIsNull(User user, Folder folder);
+    long countByFolderAndDeletedAtIsNull(Folder folder);
 
 }

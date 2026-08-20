@@ -11,6 +11,13 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+
+import java.util.List;
 
 @Configuration
 @RequiredArgsConstructor
@@ -24,9 +31,14 @@ public class SecurityConfig {
 
         http
 
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+
                 .csrf(csrf -> csrf.disable())
 
                 .authorizeHttpRequests(auth -> auth
+
+                        .requestMatchers(HttpMethod.OPTIONS, "/**")
+                        .permitAll()
 
                         .requestMatchers("/api/auth/**")
                         .permitAll()
@@ -34,7 +46,17 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**")
                         .hasRole("ADMIN")
 
+                        .requestMatchers(HttpMethod.POST, "/api/categories/**", "/api/departments/**")
+                        .hasRole("USER")
+                        .requestMatchers(HttpMethod.PUT, "/api/categories/**", "/api/departments/**")
+                        .hasRole("USER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/categories/**", "/api/departments/**")
+                        .hasRole("USER")
+
                         .requestMatchers("/api/user/**")
+                        .authenticated()
+
+                        .requestMatchers("/api/documents/**", "/api/categories/**", "/api/departments/**", "/api/shares/**")
                         .hasAnyRole("USER", "ADMIN")
 
                         .anyRequest()
@@ -45,10 +67,42 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(
                                 SessionCreationPolicy.STATELESS))
 
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint((request, response, exception) ->
+                                response.sendError(HttpStatus.UNAUTHORIZED.value(), "Authentication required"))
+                        .accessDeniedHandler((request, response, exception) ->
+                                response.sendError(HttpStatus.FORBIDDEN.value(), "Access denied")))
+
                 .addFilterBefore(jwtFilter,
                         UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOriginPatterns(List.of(
+                "http://localhost:*",
+                "http://127.0.0.1:*"
+        ));
+        configuration.setAllowedMethods(List.of(
+                "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
+        ));
+        configuration.setAllowedHeaders(List.of(
+                "Authorization", "Content-Type", "Accept", "Origin",
+                "X-Requested-With", "Cache-Control"
+        ));
+        configuration.setExposedHeaders(List.of(
+                "Content-Disposition", "Content-Type", "Content-Length"
+        ));
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 
     @Bean

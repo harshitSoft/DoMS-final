@@ -42,6 +42,11 @@ public class User implements UserDetails {
     @Column(nullable = false, unique = true)
     private String email;
 
+    private String contactNumber;
+    private String jobTitle;
+    private String department;
+    private String address;
+
     @Column(nullable = false)
     private String password;
 
@@ -56,6 +61,18 @@ public class User implements UserDetails {
     @Builder.Default
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Builder.Default
+    @Column(nullable = false)
+    private int documentLimit = 10;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private int documentsUsed = 0;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private String currentPlan = "FREE";
 
 
     // ==========================

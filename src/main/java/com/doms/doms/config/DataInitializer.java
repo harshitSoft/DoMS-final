@@ -31,7 +31,7 @@ public class DataInitializer implements CommandLineRunner {
                     .enabled(true)
                     .createdAt(LocalDateTime.now())
                     .build();
-
+//changes
             userRepository.save(admin);
 
             System.out.println("✅ Admin Created");

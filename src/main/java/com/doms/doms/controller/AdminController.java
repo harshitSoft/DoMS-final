@@ -12,8 +12,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import jakarta.validation.Valid;
 
-
+//saaaaaaa
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
@@ -28,7 +29,7 @@ public class AdminController {
     // Create User
     @PostMapping("/create-user")
     public ResponseEntity<UserResponse> createUser(
-            @RequestBody CreateUserRequest request) {
+            @Valid @RequestBody CreateUserRequest request) {
 
         return ResponseEntity.ok(
                 userService.createUser(request)

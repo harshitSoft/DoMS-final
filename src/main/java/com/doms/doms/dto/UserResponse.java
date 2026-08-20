@@ -16,4 +16,11 @@ public class UserResponse {
     private String email;
     private String role;
     private boolean enabled;
+    private int documentLimit;
+    private int documentsUsed;
+    private String currentPlan;
+    private String contactNumber;
+    private String jobTitle;
+    private String department;
+    private String address;
 }

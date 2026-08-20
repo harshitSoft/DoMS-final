@@ -10,4 +10,10 @@ public class UpdateUserRequest {
     private String email;
     private Role role;
     private boolean enabled;
+    private String contactNumber;
+    private String jobTitle;
+    private String department;
+    private String address;
+    private String currentPlan;
+    private Integer documentLimit;
 }
