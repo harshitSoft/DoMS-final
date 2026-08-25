@@ -33,23 +33,40 @@ public class DocumentServiceImpl implements DocumentService {
     private User current(){return users.findByEmail(SecurityContextHolder.getContext().getAuthentication().getName()).orElseThrow(()->new RuntimeException("User not found"));}
     private Document owned(Long id){User u=current(); return u.getRole()==Role.ROLE_ADMIN?documents.findById(id).orElseThrow(()->new ResourceNotFoundException("Document not found")):documents.findByUploadedByAndId(u,id).orElseThrow(()->new org.springframework.security.access.AccessDeniedException("Only the owner can perform this action"));}
     private Document accessible(Long id, SharePermission required){User u=current();Document d=documents.findById(id).orElseThrow(()->new ResourceNotFoundException("Document not found"));if(d.getDeletedAt()!=null)throw new ResourceNotFoundException("Document is in the recycle bin");if(u.getRole()==Role.ROLE_ADMIN||d.getUploadedBy().getId().equals(u.getId()))return d;DocumentShare s=shares.findByDocumentAndSharedTo(d,u).orElseThrow(()->new org.springframework.security.access.AccessDeniedException("Document access denied"));if(s.getPermission().ordinal()<required.ordinal())throw new org.springframework.security.access.AccessDeniedException("Insufficient shared permission");return d;}
-    private DocumentResponseDTO dto(Document d){User u=d.getUploadedBy();Folder f=d.getFolder();return new DocumentResponseDTO(d.getId(),d.getFileName(),d.getFilePath(),d.getFileType(),d.getFileSize(),d.getDescription(),new UserResponseDTO(u.getId(),u.getFullName(),u.getEmail(),u.getRole()),d.getDocumentCode(),d.getCategory(),d.getDepartment(),d.getDocumentDate(),d.getTags(),d.getUploadedAt(),d.getReferenceNumber(),d.getDocumentOwner(),d.getConfidentiality(),d.getDocumentStatus(),d.getFiscalYear(),d.getStorageLocation(),f==null?null:f.getId(),f==null?null:f.getName(),d.getCurrentVersion(),d.getDeletedAt());}
+    private DocumentResponseDTO dto(Document d){User u=d.getUploadedBy();Folder f=d.getFolder();return new DocumentResponseDTO(d.getId(),d.getFileName(),null,d.getFileType(),d.getFileSize(),d.getDescription(),new UserResponseDTO(u.getId(),u.getFullName(),u.getEmail(),u.getRole()),d.getDocumentCode(),d.getCategory(),d.getDepartment(),d.getDocumentDate(),d.getTags(),d.getUploadedAt(),d.getReferenceNumber(),d.getDocumentOwner(),d.getConfidentiality(),d.getDocumentStatus(),d.getFiscalYear(),d.getStorageLocation(),f==null?null:f.getId(),f==null?null:f.getName(),d.getCurrentVersion(),d.getDeletedAt());}
 
+    @Transactional
     public DocumentResponseDTO uploadDocument(MultipartFile file, DocumentRequest m){
         User u=current();
         String hash=hash(file);documents.findFirstByUploadedByAndContentHashAndDeletedAtIsNull(u,hash).ifPresent(existing->{throw new IllegalArgumentException("Duplicate file detected. This content already exists as "+existing.getDocumentCode()+" ("+existing.getFileName()+")");});
         String category=clean(m.getCategory(),""); String department=clean(m.getDepartment(),""); String type=clean(m.getFileType(),extension(file.getOriginalFilename()));
         if(!categories.existsByNameIgnoreCase(category)) throw new IllegalArgumentException("Select a valid category");
         if(!departments.existsByNameIgnoreCase(department)) throw new IllegalArgumentException("Select a valid department");
-        String code=code(category,type,u.getId()); String stored=files.saveFile(file);
         Folder folder=m.getFolderId()==null?null:folders.findByIdAndOwner(m.getFolderId(),u).orElseThrow(()->new IllegalArgumentException("Folder not found"));
+        String code=code(category,type,u.getId()); String stored=files.saveFile(file);
         Document d=Document.builder().fileName(clean(m.getFileName(),file.getOriginalFilename())).filePath(stored).fileType(type.toUpperCase()).fileSize(file.getSize()).description(m.getDescription()).category(category).department(department).documentDate(clean(m.getDocumentDate(),LocalDate.now().toString())).tags(m.getTags()).referenceNumber(m.getReferenceNumber()).documentOwner(m.getDocumentOwner()).confidentiality(clean(m.getConfidentiality(),"INTERNAL")).documentStatus(clean(m.getDocumentStatus(),"ACTIVE")).fiscalYear(m.getFiscalYear()).storageLocation(m.getStorageLocation()).documentCode(code).uploadedAt(LocalDateTime.now()).uploadedBy(u).folder(folder).contentHash(hash).currentVersion(1).build();
-        Document saved=documents.save(d);versions.save(DocumentVersion.builder().document(saved).versionNumber(1).filePath(stored).fileName(saved.getFileName()).fileType(saved.getFileType()).fileSize(saved.getFileSize()).contentHash(hash).createdBy(u).createdAt(LocalDateTime.now()).changeNote("Initial upload").build());audit.record(u,saved,"UPLOAD","Uploaded version 1");u.setDocumentsUsed((int)documents.findByUploadedBy(u).stream().filter(x->x.getDeletedAt()==null).count()); users.save(u); return dto(saved);
+        try {
+            // The document row must exist before document_versions can reference it.
+            Document saved=documents.saveAndFlush(d);
+            versions.saveAndFlush(DocumentVersion.builder()
+                    .document(saved).versionNumber(1).filePath(stored)
+                    .fileName(saved.getFileName()).fileType(saved.getFileType())
+                    .fileSize(saved.getFileSize()).contentHash(hash).createdBy(u)
+                    .createdAt(saved.getUploadedAt()).changeNote("Initial upload").build());
+            audit.record(u,saved,"UPLOAD","Uploaded version 1");
+            u.setDocumentsUsed((int)documents.findByUploadedBy(u).stream().filter(x->x.getDeletedAt()==null).count());
+            users.save(u);
+            return dto(saved);
+        } catch (RuntimeException exception) {
+            // Do not leave an orphaned file when a database constraint rejects the upload.
+            files.deleteFile(stored);
+            throw exception;
+        }
     }
     private String clean(String v,String fallback){return v==null||v.isBlank()?fallback:v.trim();}
     private String extension(String n){int i=n==null?-1:n.lastIndexOf('.');return i<0?"FILE":n.substring(i+1);}
     private String code(String category,String type,Long uid){String a=category.replaceAll("[^A-Za-z0-9]","").toUpperCase(); if(a.length()>4)a=a.substring(0,4); String b=type.replaceAll("[^A-Za-z0-9]","").toUpperCase(); if(b.length()>4)b=b.substring(0,4); return String.format("DOC-%s-%s-U%03d-%s",a,b,uid,UUID.randomUUID().toString().substring(0,8).toUpperCase());}
-    public List<DocumentResponseDTO> getAllDocuments(){User u=current();return (u.getRole()==Role.ROLE_ADMIN?documents.findAll():documents.findByUploadedBy(u)).stream().filter(d->d.getDeletedAt()==null).map(this::dto).toList();}
+    public List<DocumentResponseDTO> getAllDocuments(){User u=current();return (u.getRole()==Role.ROLE_ADMIN?documents.findAll():documents.findByUploadedBy(u)).stream().filter(d->d.getDeletedAt()==null).sorted(Comparator.comparing(Document::getUploadedAt,Comparator.nullsLast(Comparator.reverseOrder()))).map(this::dto).toList();}
     public DocumentResponseDTO getDocumentById(Long id){return dto(accessible(id,SharePermission.VIEW));}
     @Transactional
     public void deleteDocument(Long id){Document d=owned(id);if(d.getDeletedAt()!=null)return;d.setDeletedAt(LocalDateTime.now());documents.save(d);audit.record(current(),d,"DELETE","Moved to recycle bin");User u=d.getUploadedBy();u.setDocumentsUsed((int)documents.findByUploadedBy(u).stream().filter(x->x.getDeletedAt()==null).count());users.save(u);}
@@ -67,7 +84,22 @@ public class DocumentServiceImpl implements DocumentService {
     @Transactional public void purge(Long id){Document d=owned(id);if(d.getDeletedAt()==null)throw new IllegalArgumentException("Move the document to the recycle bin first");audit.record(current(),d,"PERMANENT_DELETE","Permanently deleted document and versions");Set<String> paths=new HashSet<>();versions.findByDocumentOrderByVersionNumberDesc(d).forEach(v->paths.add(v.getFilePath()));paths.add(d.getFilePath());paths.forEach(files::deleteFile);shares.deleteByDocument(d);notes.deleteByDocument(d);versions.deleteByDocument(d);documents.delete(d);}
     public DocumentResponseDTO move(Long id,Long folderId){Document d=owned(id);Folder f=folderId==null?null:folders.findByIdAndOwner(folderId,current()).orElseThrow(()->new IllegalArgumentException("Folder not found"));d.setFolder(f);audit.record(current(),d,"MOVE",f==null?"Moved to My Documents":"Moved to folder "+f.getName());return dto(documents.save(d));}
     public List<VersionResponse> versionList(Long id){Document d=accessible(id,SharePermission.VIEW);ensureInitialVersion(d);return versions.findByDocumentOrderByVersionNumberDesc(d).stream().map(v->new VersionResponse(v.getId(),v.getVersionNumber(),v.getFileName(),v.getFileSize(),v.getCreatedBy().getFullName(),v.getCreatedAt(),v.getChangeNote())).toList();}
-    public DocumentResponseDTO addVersion(Long id,MultipartFile file,String note){Document d=owned(id);ensureInitialVersion(d);String h=hash(file);if(h.equals(d.getContentHash()))throw new IllegalArgumentException("This file is identical to the current version");String path=files.saveFile(file);int number=Optional.ofNullable(d.getCurrentVersion()).orElse(1)+1;String type=extension(file.getOriginalFilename()).toUpperCase();DocumentVersion v=DocumentVersion.builder().document(d).versionNumber(number).filePath(path).fileName(clean(file.getOriginalFilename(),d.getFileName())).fileType(type).fileSize(file.getSize()).contentHash(h).createdBy(current()).createdAt(LocalDateTime.now()).changeNote(clean(note,"New version uploaded")).build();versions.save(v);d.setFilePath(path);d.setFileName(v.getFileName());d.setFileType(type);d.setFileSize(file.getSize());d.setContentHash(h);d.setCurrentVersion(number);audit.record(current(),d,"NEW_VERSION","Uploaded version "+number);return dto(documents.save(d));}
+    @Transactional
+    public DocumentResponseDTO addVersion(Long id,MultipartFile file,String note){
+        Document d=owned(id);ensureInitialVersion(d);String h=hash(file);
+        if(h.equals(d.getContentHash()))throw new IllegalArgumentException("This file is identical to the current version");
+        String path=files.saveFile(file);
+        try {
+            int number=Optional.ofNullable(d.getCurrentVersion()).orElse(1)+1;
+            String type=extension(file.getOriginalFilename()).toUpperCase();
+            DocumentVersion v=DocumentVersion.builder().document(d).versionNumber(number).filePath(path).fileName(clean(file.getOriginalFilename(),d.getFileName())).fileType(type).fileSize(file.getSize()).contentHash(h).createdBy(current()).createdAt(LocalDateTime.now()).changeNote(clean(note,"New version uploaded")).build();
+            versions.saveAndFlush(v);d.setFilePath(path);d.setFileName(v.getFileName());d.setFileType(type);d.setFileSize(file.getSize());d.setContentHash(h);d.setCurrentVersion(number);audit.record(current(),d,"NEW_VERSION","Uploaded version "+number);
+            return dto(documents.saveAndFlush(d));
+        } catch (RuntimeException exception) {
+            files.deleteFile(path);
+            throw exception;
+        }
+    }
     public DocumentResponseDTO rollback(Long id,Integer version){Document d=owned(id);DocumentVersion target=versions.findByDocumentAndVersionNumber(d,version).orElseThrow(()->new ResourceNotFoundException("Version not found"));int number=Optional.ofNullable(d.getCurrentVersion()).orElse(1)+1;versions.save(DocumentVersion.builder().document(d).versionNumber(number).filePath(target.getFilePath()).fileName(target.getFileName()).fileType(target.getFileType()).fileSize(target.getFileSize()).contentHash(target.getContentHash()).createdBy(current()).createdAt(LocalDateTime.now()).changeNote("Restored from version "+version).build());d.setFilePath(target.getFilePath());d.setFileName(target.getFileName());d.setFileType(target.getFileType());d.setFileSize(target.getFileSize());d.setContentHash(target.getContentHash());d.setCurrentVersion(number);audit.record(current(),d,"ROLLBACK","Rolled back version "+version+" as version "+number);return dto(documents.save(d));}
     private void ensureInitialVersion(Document d){if(versions.findByDocumentOrderByVersionNumberDesc(d).isEmpty()){d.setCurrentVersion(1);documents.save(d);versions.save(DocumentVersion.builder().document(d).versionNumber(1).filePath(d.getFilePath()).fileName(d.getFileName()).fileType(d.getFileType()).fileSize(d.getFileSize()).contentHash(d.getContentHash()).createdBy(d.getUploadedBy()).createdAt(d.getUploadedAt()==null?LocalDateTime.now():d.getUploadedAt()).changeNote("Original document").build());}}
 }

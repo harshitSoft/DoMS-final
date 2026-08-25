@@ -40,6 +40,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**")
                         .permitAll()
 
+                        .requestMatchers("/api/auth/logout")
+                        .authenticated()
+
                         .requestMatchers("/api/auth/**")
                         .permitAll()
 

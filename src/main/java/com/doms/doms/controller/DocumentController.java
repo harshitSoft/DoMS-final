@@ -93,7 +93,7 @@ public class DocumentController {
                 documentService.downloadDocument(id);
         MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
         try {
-            String detected = java.nio.file.Files.probeContentType(resource.getFile().toPath());
+            String detected = java.net.URLConnection.guessContentTypeFromName(document.getFileName());
             if (detected != null) mediaType = MediaType.parseMediaType(detected);
         } catch (Exception ignored) { }
         return ResponseEntity.ok()
@@ -117,17 +117,18 @@ public class DocumentController {
     public ResponseEntity<Resource> viewDocument(
             @PathVariable Long id) {
 
-
+        DocumentResponseDTO document = documentService.getDocumentById(id);
         Resource resource =
                 documentService.viewDocument(id);
 
 
 
         MediaType mediaType = MediaType.APPLICATION_OCTET_STREAM;
-        try { String detected=java.nio.file.Files.probeContentType(resource.getFile().toPath());if(detected!=null)mediaType=MediaType.parseMediaType(detected); } catch(Exception ignored){}
+        try { String detected=java.net.URLConnection.guessContentTypeFromName(document.getFileName());if(detected!=null)mediaType=MediaType.parseMediaType(detected); } catch(Exception ignored){}
         return ResponseEntity.ok()
                 .contentType(mediaType)
-                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline().filename(resource.getFilename(),java.nio.charset.StandardCharsets.UTF_8).build().toString())
+                .contentLength(document.getFileSize())
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline().filename(document.getFileName(),java.nio.charset.StandardCharsets.UTF_8).build().toString())
                 .body(resource);
     }
 

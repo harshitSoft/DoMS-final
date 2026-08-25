@@ -74,6 +74,10 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private String currentPlan = "FREE";
 
+    @Builder.Default
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private long tokenVersion = 0;
+
 
     // ==========================
     // Spring Security Methods

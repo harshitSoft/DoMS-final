@@ -15,6 +15,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -74,5 +76,15 @@ public class AuthServiceImpl implements AuthService {
                 .role(user.getRole().name())
                 .message("Login successful.")
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public void logout() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findByEmailForUpdate(email)
+                .orElseThrow(() -> new RuntimeException("User not found."));
+        user.setTokenVersion(user.getTokenVersion() + 1);
+        userRepository.save(user);
     }
 }

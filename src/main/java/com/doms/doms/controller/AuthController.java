@@ -39,6 +39,12 @@ public class AuthController {
         );
     }
 
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout() {
+        authService.logout();
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/password/request-otp")
     public ResponseEntity<String> requestPasswordOtp(@RequestBody OtpRequest request) {
         passwordOtpService.send(request.email());

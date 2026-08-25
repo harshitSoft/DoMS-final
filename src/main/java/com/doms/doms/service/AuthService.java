@@ -9,4 +9,5 @@ public interface AuthService {
     String register(RegisterRequest request);
 
     LoginResponse login(LoginRequest request);
+    void logout();
 }
